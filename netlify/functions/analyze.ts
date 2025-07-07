@@ -60,11 +60,11 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
     };
   }
 
-  const apiKey = process.env.API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'API key is not configured on the server.' }),
+      body: JSON.stringify({ error: 'The Gemini API key is not set up. Please contact the administrator.' }),
     };
   }
 
