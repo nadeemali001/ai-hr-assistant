@@ -1,0 +1,5 @@
+{
+  "name": "AI HR Assistant",
+  "description": "An AI-powered tool to help users evaluate resumes against job descriptions, providing detailed analysis, scoring, and feedback using the Gemini API.",
+  "requestFramePermissions": []
+}
