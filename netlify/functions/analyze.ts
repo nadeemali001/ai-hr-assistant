@@ -115,11 +115,22 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
     });
 
     const text = response.text;
-     if (!text) {
+    if (!text) {
         return {
             statusCode: 500,
             body: JSON.stringify({ error: "The AI returned an empty response. This might be due to a content policy." })
         };
+    }
+
+    // Validate that the AI response is valid JSON
+    try {
+      JSON.parse(text);
+    } catch (jsonErr) {
+      console.error('Invalid JSON from AI:', text);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'The AI returned invalid JSON. Please try again or adjust your input.' })
+      };
     }
 
     return {
