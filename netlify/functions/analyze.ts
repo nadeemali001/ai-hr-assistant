@@ -51,6 +51,17 @@ Job Description Text:
 ---
 `;
 
+const COVER_LETTER_PROMPT = `
+Write a professional cover letter for the following job description. The tone should be: {TONE}.
+The output MUST be a single, valid JSON object with the following key: "coverLetter" (the letter as a string, with line breaks as needed).
+Do not include any introductory text or markdown formatting around the JSON object.
+
+Job Description Text:
+---
+{JD}
+---
+`;
+
 // --- Handler Logic ---
 const handler: Handler = async (event: HandlerEvent, context: HandlerContext) => {
   if (event.httpMethod !== 'POST') {
@@ -72,10 +83,16 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
     const body = JSON.parse(event.body || '{}');
     const { type, resumeText, jdText } = body;
 
-    if (!type || !resumeText) {
+    if (!type) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: 'Missing required fields: type and resumeText.' }),
+        body: JSON.stringify({ error: 'Missing required field: type.' }),
+      };
+    }
+    if ((type === 'resume' || type === 'fit') && !resumeText) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Missing required field: resumeText.' }),
       };
     }
 
@@ -97,6 +114,16 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
           };
         }
         prompt = MATCH_ANALYSIS_PROMPT.replace('{RESUME}', resumeText).replace('{JD}', jdText);
+        break;
+      case 'coverLetter':
+        console.log('Cover letter request body:', body);
+        if (!jdText || !body.tone) {
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'Missing jdText or tone for cover letter.' }),
+          };
+        }
+        prompt = COVER_LETTER_PROMPT.replace('{JD}', jdText).replace('{TONE}', body.tone);
         break;
       default:
         return {
@@ -124,7 +151,15 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
 
     // Validate that the AI response is valid JSON
     try {
-      JSON.parse(text);
+      const parsed = JSON.parse(text);
+      if (type === 'coverLetter') {
+        // Always return { coverLetter, tone }
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ coverLetter: parsed.coverLetter, tone: body.tone }),
+        };
+      }
     } catch (jsonErr) {
       console.error('Invalid JSON from AI:', text);
       return {
@@ -141,9 +176,15 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
 
   } catch (error) {
     console.error('Error in serverless function:', error);
+    let errorMessage = 'An internal server error occurred.';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    }
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'An internal server error occurred.' }),
+      body: JSON.stringify({ error: errorMessage }),
     };
   }
 };

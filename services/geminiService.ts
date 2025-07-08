@@ -1,6 +1,6 @@
-import type { ResumeAnalysis, JobDescriptionAnalysis, MatchAnalysis } from '../types';
+import type { ResumeAnalysis, JobDescriptionAnalysis, MatchAnalysis, CoverLetterResult } from '../types';
 
-const generateContent = async <T,>(type: 'resume' | 'jd' | 'fit', resumeText: string, jdText?: string): Promise<T> => {
+const generateContent = async <T,>(type: 'resume' | 'jd' | 'fit' | 'coverLetter', resumeText: string, jdText?: string): Promise<T> => {
   try {
     const response = await fetch('/api/analyze', {
       method: 'POST',
@@ -39,4 +39,29 @@ export const analyzeJobDescription = (jd: string): Promise<JobDescriptionAnalysi
 
 export const analyzeFit = (resume: string, jd: string): Promise<MatchAnalysis> => {
   return generateContent<MatchAnalysis>('fit', resume, jd);
+};
+
+export const generateCoverLetter = async (jdText: string, tone: string): Promise<CoverLetterResult> => {
+  console.log('generateCoverLetter called with:', { jdText, tone });
+  try {
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'coverLetter', jdText, tone }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'An unknown error occurred.' }));
+      throw new Error(`Failed to get cover letter from AI: ${errorData.error || response.statusText}`);
+    }
+    const data = await response.json();
+    return data as CoverLetterResult;
+  } catch (error) {
+    console.error('API Service Error:', error);
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('An unknown error occurred while communicating with the server.');
+  }
 };

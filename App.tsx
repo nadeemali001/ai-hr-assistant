@@ -3,10 +3,16 @@ import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import { AnalysisTab } from './types';
 import type { AnalysisResults } from './types';
-import { analyzeResume, analyzeJobDescription, analyzeFit } from './services/geminiService';
+import { analyzeResume, analyzeJobDescription, analyzeFit, generateCoverLetter } from './services/geminiService';
 import AnalysisDisplay from './components/AnalysisDisplay';
 import TabButton from './components/TabButton';
 import Spinner from './components/Spinner';
+import jsPDF from 'jspdf';
+import { CoverLetterResult } from './types';
+// Import the PDF template utility
+// @ts-ignore
+import { applyPdfTemplate } from './components/AnalysisDisplay';
+import CoverLetterPDFPreview from './components/CoverLetterPDFPreview';
 
 // Configure the worker for pdf.js using a reliable CDN like unpkg
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
@@ -17,17 +23,18 @@ const App: React.FC = () => {
   const [resumeFileName, setResumeFileName] = useState('');
   const [jdFileName, setJdFileName] = useState('');
   const [activeTab, setActiveTab] = useState<AnalysisTab>(AnalysisTab.MATCH_ANALYSIS);
-  const [results, setResults] = useState<AnalysisResults>({ resumeAnalysis: null, jdAnalysis: null, matchAnalysis: null });
+  const [results, setResults] = useState<AnalysisResults>({ resumeAnalysis: null, coverLetterResult: null, matchAnalysis: null });
   const [isLoading, setIsLoading] = useState(false);
   const [isParsingResume, setIsParsingResume] = useState(false);
   const [isParsingJd, setIsParsingJd] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [coverLetterTone, setCoverLetterTone] = useState('Formal');
 
   const TABS_CONFIG = {
     [AnalysisTab.MATCH_ANALYSIS]: { icon: '🤝', label: AnalysisTab.MATCH_ANALYSIS },
     [AnalysisTab.ATS_SCORE]: { icon: '📊', label: AnalysisTab.ATS_SCORE },
     [AnalysisTab.RESUME_ANALYSIS]: { icon: '📄', label: AnalysisTab.RESUME_ANALYSIS },
-    [AnalysisTab.JD_ANALYSIS]: { icon: '📋', label: AnalysisTab.JD_ANALYSIS },
+    [AnalysisTab.COVER_LETTER]: { icon: '✉️', label: AnalysisTab.COVER_LETTER },
   };
     
   const TABS = Object.values(AnalysisTab);
@@ -93,24 +100,15 @@ const App: React.FC = () => {
 
   const handleAnalyze = useCallback(async () => {
     if (isAnalyzeButtonDisabled) return;
-
     setIsLoading(true);
     setError(null);
-    setResults({ resumeAnalysis: null, jdAnalysis: null, matchAnalysis: null });
-    
-    if (!process.env.API_KEY) {
-      setError("Configuration Error: The Gemini API key is not set up. Please contact the administrator.");
-      setIsLoading(false);
-      return;
-    }
-
+    setResults({ resumeAnalysis: null, coverLetterResult: null, matchAnalysis: null });
     try {
-      const [resumeAnalysis, jdAnalysis, matchAnalysis] = await Promise.all([
+      const [resumeAnalysis, matchAnalysis] = await Promise.all([
         analyzeResume(resumeText),
-        analyzeJobDescription(jdText),
         analyzeFit(resumeText, jdText)
       ]);
-      setResults({ resumeAnalysis, jdAnalysis, matchAnalysis });
+      setResults({ resumeAnalysis, coverLetterResult: null, matchAnalysis });
       setActiveTab(AnalysisTab.MATCH_ANALYSIS);
     } catch (e) {
       if (e instanceof Error) {
@@ -122,6 +120,43 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   }, [resumeText, jdText, isAnalyzeButtonDisabled]);
+
+  const handleGenerateCoverLetter = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      // Instruct AI to keep the letter concise for a single page (max 400 words)
+      const conciseTone = coverLetterTone + ' (Keep the letter concise, max 400 words, suitable for a single A4 page)';
+      const result = await generateCoverLetter(jdText, conciseTone);
+      setResults(prev => ({
+        ...prev,
+        coverLetterResult: result
+      }));
+    } catch (e) {
+      setError('Failed to generate cover letter.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCopyCoverLetter = () => {
+    if (results.coverLetterResult?.coverLetter) {
+      navigator.clipboard.writeText(results.coverLetterResult.coverLetter);
+    }
+  };
+
+  const handleGenerateCoverLetterPDF = () => {
+    if (!results.coverLetterResult?.coverLetter) return;
+    const doc = new jsPDF();
+    applyPdfTemplate(doc, 'Cover Letter');
+    let y = 40;
+    doc.setFont('times', 'normal');
+    doc.setFontSize(14);
+    doc.setTextColor(40, 40, 40);
+    const lines = doc.splitTextToSize(results.coverLetterResult.coverLetter, 150);
+    doc.text(lines, 30, y);
+    doc.save('cover_letter.pdf');
+  };
     
   return (
     <div className="min-h-screen text-slate-800">
@@ -215,12 +250,36 @@ const App: React.FC = () => {
                       />
                   )})}
               </div>
-              <AnalysisDisplay 
-                results={results} 
-                activeTab={activeTab} 
-                isLoading={isLoading} 
-                error={isLoading ? error : null}
-              />
+              {activeTab === AnalysisTab.COVER_LETTER && (
+                <div className="mt-8 bg-white p-6 rounded-xl shadow-lg border border-slate-200 flex flex-col gap-4">
+                  <div className="flex flex-col sm:flex-row gap-4 items-center">
+                    <label className="font-semibold text-slate-700">Tone:</label>
+                    <select value={coverLetterTone} onChange={e => setCoverLetterTone(e.target.value)} className="border border-slate-300 rounded-md p-2">
+                      <option value="Formal">Formal</option>
+                      <option value="Classic">Classic</option>
+                      <option value="Modern">Modern</option>
+                      <option value="Friendly">Friendly</option>
+                      <option value="Bold">Bold</option>
+                    </select>
+                    <button onClick={handleGenerateCoverLetter} disabled={isLoading || !jdText.trim()} className="bg-indigo-600 text-white px-4 py-2 rounded-md font-semibold hover:bg-indigo-700 disabled:opacity-50">{isLoading ? 'Generating...' : 'Generate Cover Letter'}</button>
+                  </div>
+                  <textarea value={results.coverLetterResult?.coverLetter || ''} onChange={e => setResults(prev => prev.coverLetterResult ? { ...prev, coverLetterResult: { ...prev.coverLetterResult, coverLetter: e.target.value } } : prev)} className="w-full min-h-[16rem] p-3 border border-slate-300 rounded-md text-slate-700 bg-slate-50" placeholder="Your cover letter will appear here..."/>
+                  <div className="flex gap-2">
+                    <button onClick={handleCopyCoverLetter} className="bg-slate-200 px-3 py-2 rounded-md font-medium hover:bg-slate-300">Copy</button>
+                  </div>
+                  {results.coverLetterResult?.coverLetter && (
+                    <CoverLetterPDFPreview text={results.coverLetterResult.coverLetter} />
+                  )}
+                </div>
+              )}
+              {activeTab !== AnalysisTab.COVER_LETTER && (
+                <AnalysisDisplay 
+                  results={results} 
+                  activeTab={activeTab} 
+                  isLoading={isLoading} 
+                  error={isLoading ? error : null}
+                />
+              )}
           </div>
       </main>
       <footer className="text-center py-6 text-sm text-slate-500">

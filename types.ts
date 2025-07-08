@@ -2,7 +2,7 @@ export enum AnalysisTab {
   MATCH_ANALYSIS = 'Resume vs JD Match',
   ATS_SCORE = 'ATS Score',
   RESUME_ANALYSIS = 'Resume Analysis',
-  JD_ANALYSIS = 'JD Analysis',
+  COVER_LETTER = 'Cover Letter',
 }
 
 export interface ResumeAnalysis {
@@ -36,8 +36,13 @@ export interface MatchAnalysis {
   fitSummary: string;
 }
 
+export interface CoverLetterResult {
+  coverLetter: string;
+  tone: string;
+}
+
 export interface AnalysisResults {
   resumeAnalysis: ResumeAnalysis | null;
-  jdAnalysis: JobDescriptionAnalysis | null;
+  coverLetterResult: CoverLetterResult | null;
   matchAnalysis: MatchAnalysis | null;
 }
